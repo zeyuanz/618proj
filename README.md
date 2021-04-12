@@ -6,6 +6,9 @@
 - wsp.h. Library with general WSP related functions.
 - wsp_SA_serial.cpp. Serial implementation of SA for WSP.
 
+## DEV MACHINE
+ghc77
+
 ## USAGE
 Compile
 ```
