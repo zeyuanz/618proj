@@ -10,6 +10,10 @@
  *
  *         Author:  zeyuan zuo
  *   Organization:  CMU
+ *   		 TODO:
+ *   		 1. Change to openMP
+ *   		 2. Initialize randomly
+ *   		 3. Fix rand() to rand_r(), see manual for details
  *
  * =====================================================================================
  */
@@ -28,6 +32,7 @@ void print_usage() {
 	printf("Program Options:\n");
 	printf("	-h			--print this message\n");
 	printf("	-f	<STRING>	--file contains distance matrix\n");
+	printf("	-p	<INT>		--number of processors, should be positive\n");
 }
 
 /* @brief: initialize the path as 0->1->2...->n
@@ -45,6 +50,14 @@ void init_path(int *cost_path, int n_cities, int *dist) {
 			cost_path[0] += get_dist(dist, n_cities, i-1, i);
 		}
 	}
+
+	/*
+	for (int i = n_cities; i >= 1; --i){
+		int j = rand() % (i)+1;
+		int temp = cost_path[i];
+		cost_path[i] = cost_path[j];
+		cost_path[j] = temp;
+	}*/
 }
 
 /* @brief: acquire the neigboring distance given position. E.g.
@@ -156,6 +169,7 @@ void simulate_annealing(int *cost_path, int n_cities, int *dist, int n_iter) {
 
 int main(int argc, char **argv) {
 	// set rando seed to current time
+	int p = 1;
 	srand(time(NULL));
 	char *filename = NULL;
 	for (int i=0; i < argc; i++) {
@@ -165,6 +179,9 @@ int main(int argc, char **argv) {
 		}
 		if (strcmp(argv[i], "-f")==0) {
 			filename=argv[i+1];
+		}
+		if (strcmp(argv[i], "-p")==0) {
+			p = atoi(argv[i+1]);
 		}
 	}
 
@@ -178,7 +195,7 @@ int main(int argc, char **argv) {
 
 	int *cost_path = new int[n_cities+1];
 	// the n_iter can be tuned, hard code for now
-	int n_iter = n_cities * 2000;
+	int n_iter = n_cities * n_cities * 200;
 	// initializa path
 	init_path(cost_path, n_cities, dist);
 	// simulating annealing (main solver step)
