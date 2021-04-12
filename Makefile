@@ -1,5 +1,5 @@
 
-CXXFLAGS += -std=c++11 -Wall -Wextra -g -O3 -DNDEBUG
+CXXFLAGS += -std=c++11 -Wall -Wextra -pthread -fopenmp -g -O3 -DNDEBUG
 
 .phony: all 
 

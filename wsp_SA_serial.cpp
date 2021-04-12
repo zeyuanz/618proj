@@ -10,10 +10,6 @@
  *
  *         Author:  zeyuan zuo
  *   Organization:  CMU
- *   		 TODO:
- *   		 1. Change to openMP
- *   		 2. Initialize randomly
- *   		 3. Fix rand() to rand_r(), see manual for details
  *
  * =====================================================================================
  */
@@ -21,9 +17,11 @@
 #include <stdio.h>
 #include <string.h>
 #include <random>
+#include <limits.h>
 #include <math.h>
 #include <time.h>
 #include "wsp.h"
+#include <omp.h>
 
 /* @brief: print usage of the program
  **/
@@ -41,23 +39,27 @@ void print_usage() {
  * the cityID of the path.
  * @para[in]: n_cities. Integer, number of total cities.
  * @para[in]: dist. Pointer of integer, distance matrix.
+ * @para[in]: seed. Pointer of rand seed, required by rand_r().
  **/
-void init_path(int *cost_path, int n_cities, int *dist) {
+void init_path(int *cost_path, int n_cities, int *dist, unsigned int *seed) {
 	cost_path[0] = 0;
+	// initialize path in 0->1->2->3 ... ->n
 	for (int i = 0; i < n_cities; ++i) {
 		cost_path[i+1] = i;
-		if (i > 0) {
-			cost_path[0] += get_dist(dist, n_cities, i-1, i);
-		}
 	}
-
-	/*
+	// create a random permutation of the path
 	for (int i = n_cities; i >= 1; --i){
-		int j = rand() % (i)+1;
+		int j = rand_r(seed) % (i)+1;
 		int temp = cost_path[i];
 		cost_path[i] = cost_path[j];
 		cost_path[j] = temp;
-	}*/
+	}
+	// compute the cost after permutation
+	for (int i = 0; i < n_cities; ++i) {
+		if (i > 0) {
+			cost_path[0] += get_dist(dist, n_cities, cost_path[i], cost_path[i+1]);
+		}
+	}
 }
 
 /* @brief: acquire the neigboring distance given position. E.g.
@@ -105,14 +107,15 @@ void swap_city(int *cost_path, int* rand_position_1, int* rand_position_2) {
  * swapping.
  * @para[in]: rand_position_2. Pointer of integer, the second position for
  * swapping.
+ * @para[in]: seed. Pointer of integer, rand_seed, required by rand_r
  **/
-int random_swap_city_cost(int *cost_path, int n_cities, int *dist, int *rand_position_1, int* rand_position_2) {
+int random_swap_city_cost(int *cost_path, int n_cities, int *dist, int *rand_position_1, int* rand_position_2, unsigned int *seed) {
 	int cost = cost_path[0];
 	// randomly select to cities. Make sure two cities are different.
-	*rand_position_1 = rand() % n_cities;
-	*rand_position_2 = rand() % n_cities;
+	*rand_position_1 = rand_r(seed) % n_cities;
+	*rand_position_2 = rand_r(seed) % n_cities;
 	while (*rand_position_1 == *rand_position_2) {
-		*rand_position_1 = rand() % n_cities;
+		*rand_position_1 = rand_r(seed) % n_cities;
 	}
 	// minus the cost when taking out two cities from path
 	cost -= edge_dist(dist, n_cities, cost_path, rand_position_1);
@@ -131,9 +134,10 @@ int random_swap_city_cost(int *cost_path, int n_cities, int *dist, int *rand_pos
  * @para[in]: cost_path. Pointer of integer, length = n_cities+1.
  * @para[in]: n_cities. Integer, number of total cities.
  * @para[in]: dist. Pointer of integer, distance matrix.
- * @para[in]: n_iter. Number of iterations.
+ * @para[in]: n_iter. Integer. Number of iterations.
+ * @para[in]: seed. Pointer of integer, random seed.
  **/
-void simulate_annealing(int *cost_path, int n_cities, int *dist, int n_iter) {
+void simulate_annealing(int *cost_path, int n_cities, int *dist, int n_iter, unsigned int *seed) {
 	// set two positions for swapping
 	int *rand_position_1 = new int(0);
 	int *rand_position_2 = new int(1);
@@ -142,7 +146,7 @@ void simulate_annealing(int *cost_path, int n_cities, int *dist, int n_iter) {
 	for (int i = 0; i < n_iter; i++) {
 		int original_cost = cost_path[0];
 		// obtain new cost after swapping
-		int new_cost = random_swap_city_cost(cost_path, n_cities, dist, rand_position_1, rand_position_2);
+		int new_cost = random_swap_city_cost(cost_path, n_cities, dist, rand_position_1, rand_position_2, seed);
 		// if new cost is smaller, accept
 		if (new_cost < original_cost) {
 			cost_path[0] = new_cost;
@@ -152,7 +156,7 @@ void simulate_annealing(int *cost_path, int n_cities, int *dist, int n_iter) {
 			// prob = exp(diff / temperature)
 			double prob = exp(diff / temperature);
 			// obtain a random number in (0,1) to decision
-			double rand_number = rand() / (RAND_MAX + 1.);
+			double rand_number = rand_r(seed) / (RAND_MAX + 1.);
 			if (rand_number < prob) {
 				cost_path[0] = new_cost;
 			} else {
@@ -168,8 +172,8 @@ void simulate_annealing(int *cost_path, int n_cities, int *dist, int n_iter) {
 }
 
 int main(int argc, char **argv) {
-	// set rando seed to current time
 	int p = 1;
+	// set rando seed to current time
 	srand(time(NULL));
 	char *filename = NULL;
 	for (int i=0; i < argc; i++) {
@@ -193,17 +197,42 @@ int main(int argc, char **argv) {
 	read_dist(fp, dist, n_cities);
 	fclose(fp);
 
-	int *cost_path = new int[n_cities+1];
 	// the n_iter can be tuned, hard code for now
 	int n_iter = n_cities * n_cities * 200;
-	// initializa path
-	init_path(cost_path, n_cities, dist);
-	// simulating annealing (main solver step)
-	simulate_annealing(cost_path, n_cities, dist, n_iter);
+	// init global optimal path among all procs
+	int *global_cost_path = new int[n_cities+1];
+	// set the intial cost to be max integer
+	global_cost_path[0] = INT_MAX;
+	// initializa different random seeds for different procs
+	unsigned int *rand_seeds = new unsigned int[p];
+	for (int i = 0; i < p; ++i) {
+		rand_seeds[i] = static_cast<unsigned int>(rand());
+	}
+
+  	#pragma omp parallel num_threads(p)
+	{
+		// randomly init the path for different procs
+    	int thread_id = omp_get_thread_num();
+		int *cost_path = new int[n_cities+1];
+		init_path(cost_path, n_cities, dist, &rand_seeds[thread_id]);
+		// simulating annealing (main solver step)
+		simulate_annealing(cost_path, n_cities, dist, n_iter, &rand_seeds[thread_id]);
+		// add lock
+		#pragma omp critical
+		{
+			if (cost_path[0] < global_cost_path[0]) {
+				memcpy(global_cost_path, cost_path, sizeof(int) * (n_cities+1));
+			}
+		}
+		delete []cost_path;
+	}
 	// print results
-	wsp_print_result(cost_path, n_cities);
+	wsp_print_result(global_cost_path, n_cities);
+	
+	// free heap alloc memory
 	delete []dist;
-	delete []cost_path;
+	delete []rand_seeds;
+	delete []global_cost_path;
 	return 0;
 }
 
