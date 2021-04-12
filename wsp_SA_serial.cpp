@@ -96,9 +96,10 @@ void swap_city(int *cost_path, int* rand_position_1, int* rand_position_2) {
 int random_swap_city_cost(int *cost_path, int n_cities, int *dist, int *rand_position_1, int* rand_position_2) {
 	int cost = cost_path[0];
 	// randomly select to cities. Make sure two cities are different.
+	*rand_position_1 = rand() % n_cities;
+	*rand_position_2 = rand() % n_cities;
 	while (*rand_position_1 == *rand_position_2) {
 		*rand_position_1 = rand() % n_cities;
-		*rand_position_2 = rand() % n_cities;
 	}
 	// minus the cost when taking out two cities from path
 	cost -= edge_dist(dist, n_cities, cost_path, rand_position_1);
@@ -121,7 +122,7 @@ int random_swap_city_cost(int *cost_path, int n_cities, int *dist, int *rand_pos
  **/
 void simulate_annealing(int *cost_path, int n_cities, int *dist, int n_iter) {
 	// set two positions for swapping
-	int *rand_position_1 = new int(1);
+	int *rand_position_1 = new int(0);
 	int *rand_position_2 = new int(1);
 	// hard code starting temperature
 	double temperature = 0.01;
@@ -144,8 +145,6 @@ void simulate_annealing(int *cost_path, int n_cities, int *dist, int n_iter) {
 			} else {
 				// if not accepted, recover the state
 				swap_city(cost_path, rand_position_1, rand_position_2);
-				// the number iterations is counted as successfully updated
-				i--;
 			}
 		}
 		// annealing step (i.e. reduce temperature)
@@ -172,7 +171,6 @@ int main(int argc, char **argv) {
 	FILE *fp = fopen(filename, "r");
 	int n_cities;
 	fscanf(fp, "%d", &n_cities);
-
 	int *dist = new int[n_cities * n_cities];
 	// read dist matrix
 	read_dist(fp, dist, n_cities);
