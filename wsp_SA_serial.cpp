@@ -177,7 +177,8 @@ int main(int argc, char **argv) {
 	fclose(fp);
 
 	int *cost_path = new int[n_cities+1];
-	int n_iter = n_cities * 100;
+	// the n_iter can be tuned, hard code for now
+	int n_iter = n_cities * 2000;
 	// initializa path
 	init_path(cost_path, n_cities, dist);
 	// simulating annealing (main solver step)
