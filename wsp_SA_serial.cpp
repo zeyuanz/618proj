@@ -31,6 +31,7 @@ void print_usage() {
 	printf("	-h			--print this message\n");
 	printf("	-f	<STRING>	--file contains distance matrix\n");
 	printf("	-p	<INT>		--number of processors, should be positive\n");
+	printf("	-t			--output running time\n");
 }
 
 /* @brief: initialize the path as 0->1->2...->n
@@ -173,6 +174,8 @@ void simulate_annealing(int *cost_path, int n_cities, int *dist, int n_iter, uns
 
 int main(int argc, char **argv) {
 	int p = 1;
+	struct timespec before, after;
+	bool record_time = false;
 	// set rando seed to current time
 	srand(time(NULL));
 	char *filename = NULL;
@@ -186,6 +189,9 @@ int main(int argc, char **argv) {
 		}
 		if (strcmp(argv[i], "-p")==0) {
 			p = atoi(argv[i+1]);
+		}
+		if (strcmp(argv[i], "-t")==0) {
+			record_time = true;
 		}
 	}
 
@@ -208,11 +214,13 @@ int main(int argc, char **argv) {
 	for (int i = 0; i < p; ++i) {
 		rand_seeds[i] = static_cast<unsigned int>(rand());
 	}
-
+	
+  	clock_gettime(CLOCK_REALTIME, &before);
   	#pragma omp parallel num_threads(p)
 	{
 		// randomly init the path for different procs
     	int thread_id = omp_get_thread_num();
+		// initialize local cost and path pointer
 		int *cost_path = new int[n_cities+1];
 		init_path(cost_path, n_cities, dist, &rand_seeds[thread_id]);
 		// simulating annealing (main solver step)
@@ -225,6 +233,12 @@ int main(int argc, char **argv) {
 			}
 		}
 		delete []cost_path;
+	}
+  	clock_gettime(CLOCK_REALTIME, &after);
+	if (record_time) {
+  		double delta_ms = (double)(after.tv_sec - before.tv_sec) * 1000.0 + (after.tv_nsec - before.tv_nsec) / 1000000.0;
+		printf("============ Time ============\n");
+		printf("Time: %.3f ms (%.3f s)\n", delta_ms, delta_ms / 1000.0);
 	}
 	// print results
 	wsp_print_result(global_cost_path, n_cities);
