@@ -138,19 +138,26 @@ int random_swap_city_cost(int *cost_path, int n_cities, int *dist, int *rand_pos
  * @para[in]: n_iter. Integer. Number of iterations.
  * @para[in]: seed. Pointer of integer, random seed.
  **/
-void simulate_annealing(int *cost_path, int n_cities, int *dist, int n_iter, unsigned int *seed) {
+void simulate_annealing(int *cost_path, int n_cities, int *dist, unsigned int *seed) {
 	// set two positions for swapping
 	int *rand_position_1 = new int(0);
 	int *rand_position_2 = new int(1);
 	// hard code starting temperature
-	double temperature = 0.01;
-	for (int i = 0; i < n_iter; i++) {
+	double temperature = 0.1;
+	// initialize a counter which records when a solution has been accepted
+	// if a new solution has been accepted, the counter is reset
+	// when the counter equals 300, break the loop
+	// It means it the past 300 iterations, SA does not acquire a new solution
+	// It might have reach the optimal (global or local)
+	int cnt = 0;
+	while (cnt < 1200) {
 		int original_cost = cost_path[0];
 		// obtain new cost after swapping
 		int new_cost = random_swap_city_cost(cost_path, n_cities, dist, rand_position_1, rand_position_2, seed);
 		// if new cost is smaller, accept
 		if (new_cost < original_cost) {
 			cost_path[0] = new_cost;
+			cnt = 0;
 		} else {
 			// if new cost is bigger, accept with probability
 			double diff = static_cast<double>(original_cost - new_cost);
@@ -160,9 +167,11 @@ void simulate_annealing(int *cost_path, int n_cities, int *dist, int n_iter, uns
 			double rand_number = rand_r(seed) / (RAND_MAX + 1.);
 			if (rand_number < prob) {
 				cost_path[0] = new_cost;
+				cnt = 0;
 			} else {
 				// if not accepted, recover the state
 				swap_city(cost_path, rand_position_1, rand_position_2);
+				cnt++;
 			}
 		}
 		// annealing step (i.e. reduce temperature)
@@ -203,8 +212,6 @@ int main(int argc, char **argv) {
 	read_dist(fp, dist, n_cities);
 	fclose(fp);
 
-	// the n_iter can be tuned, hard code for now
-	int n_iter = n_cities * n_cities * 200;
 	// init global optimal path among all procs
 	int *global_cost_path = new int[n_cities+1];
 	// set the intial cost to be max integer
@@ -224,7 +231,7 @@ int main(int argc, char **argv) {
 		int *cost_path = new int[n_cities+1];
 		init_path(cost_path, n_cities, dist, &rand_seeds[thread_id]);
 		// simulating annealing (main solver step)
-		simulate_annealing(cost_path, n_cities, dist, n_iter, &rand_seeds[thread_id]);
+		simulate_annealing(cost_path, n_cities, dist, &rand_seeds[thread_id]);
 		// add lock
 		#pragma omp critical
 		{
