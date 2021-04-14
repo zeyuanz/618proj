@@ -143,14 +143,14 @@ void simulate_annealing(int *cost_path, int n_cities, int *dist, unsigned int *s
 	int *rand_position_1 = new int(0);
 	int *rand_position_2 = new int(1);
 	// hard code starting temperature
-	double temperature = 0.1;
+	double temperature = 0.5;
 	// initialize a counter which records when a solution has been accepted
 	// if a new solution has been accepted, the counter is reset
 	// when the counter equals 300, break the loop
 	// It means it the past 300 iterations, SA does not acquire a new solution
 	// It might have reach the optimal (global or local)
 	int cnt = 0;
-	while (cnt < 1200) {
+	while (cnt < 2000) {
 		int original_cost = cost_path[0];
 		// obtain new cost after swapping
 		int new_cost = random_swap_city_cost(cost_path, n_cities, dist, rand_position_1, rand_position_2, seed);
@@ -162,7 +162,12 @@ void simulate_annealing(int *cost_path, int n_cities, int *dist, unsigned int *s
 			// if new cost is bigger, accept with probability
 			double diff = static_cast<double>(original_cost - new_cost);
 			// prob = exp(diff / temperature)
-			double prob = exp(diff / temperature);
+			double prob;
+			if (temperature < 1e-12) {
+				prob = 0.0;
+			} else {
+				prob = exp(diff / temperature);
+			}
 			// obtain a random number in (0,1) to decision
 			double rand_number = rand_r(seed) / (RAND_MAX + 1.);
 			if (rand_number < prob) {
@@ -175,7 +180,7 @@ void simulate_annealing(int *cost_path, int n_cities, int *dist, unsigned int *s
 			}
 		}
 		// annealing step (i.e. reduce temperature)
-		temperature *= 0.99;
+		temperature *= 0.9999999;
 	}
 	delete rand_position_1;
 	delete rand_position_2;
