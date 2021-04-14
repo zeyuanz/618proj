@@ -4,6 +4,7 @@
  *       Filename:  wsp_SA_serial.cpp
  *
  *    Description:  serial implementation of simulate annealing in WSP
+ *    				including baseline parallel version
  *
  *        Created:  04/11/21 10:27:34
  *       Compiler:  gcc
@@ -146,8 +147,8 @@ void simulate_annealing(int *cost_path, int n_cities, int *dist, unsigned int *s
 	double temperature = 0.5;
 	// initialize a counter which records when a solution has been accepted
 	// if a new solution has been accepted, the counter is reset
-	// when the counter equals 300, break the loop
-	// It means it the past 300 iterations, SA does not acquire a new solution
+	// when the counter equals 2000, break the loop
+	// It means it the past 2000 iterations, SA does not acquire a new solution
 	// It might have reach the optimal (global or local)
 	int cnt = 0;
 	while (cnt < 2000) {
@@ -163,6 +164,8 @@ void simulate_annealing(int *cost_path, int n_cities, int *dist, unsigned int *s
 			double diff = static_cast<double>(original_cost - new_cost);
 			// prob = exp(diff / temperature)
 			double prob;
+			// if the temperature is to low, manually set prob equals 0.0
+			// to avoid overflow issue
 			if (temperature < 1e-12) {
 				prob = 0.0;
 			} else {
