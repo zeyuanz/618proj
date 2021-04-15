@@ -69,21 +69,101 @@ double rand_double(double lo, double hi) {
  **/
 void init_solution(double *solution, int size, double lo, double hi) {
 	for (int i = 0; i < size; ++i) {
-		double[i] = rand_double(lo, hi);
+		solution[i] = rand_double(lo, hi);
 	}
 }
 
-double metropolis_hastings() {
+void rand_normal(double *new_solution, double *solution, int size, double sigma) {
 
 }
 
-double simulate_annealing() {
+/* @brief. It implements MH sampling method. For each input solution and a
+ * a given iteration:
+ * 1. It generates guess in normal distirbution. Mean = solution, std = sigma
+ * 2. If new solution is better, accept it.
+ * 3. If new solution is worse, accept it with exp difference divided by
+ * temperature.
+ * @para[in]: solution. Pointer to the solution array.
+ * @para[in]: size. Size of the solution.
+ * @para[in]: temperature. Temperature used for evaluation exp prob.
+ * @para[in]: sigma. Standard deviation for normal distribution.
+ * @return: function value of the final solution.
+ **/
+double metropolis_hastings(double *solution, int size, int n_iter, double temperature, double sigma) {
+	double *new_solution = new double[size];
+	for (int i = 0; i < n_iter; ++i) {
+		// generate new solution in normal distribution
+		// mean = solution (old)
+		// std = sigma
+		rand_normal(new_solution, solution, size, sigma);
+		double new_sol_val = test_func(new_solution, size);
+		double sol_val = test_func(solution, size);
+		if (new_sol_val < sol_val) {
+			memcpy(solution, new_solution, sizeof(double) * size);
+		} else {
+			double diff = sol_val - new_sol_val;
+			double alpha = rand_double(0.0, 1.0);
+			double prob;
+			if (temperature < 1e-12) {
+				prob = 0.0;
+			} else {
+				prob =  exp(diff / temperature);
+			}
+			if (alpha < prob) {
+				memcpy(solution, new_solution, sizeof(double) * size);
+			}
+		}
+	}
+	return test_func(solution, size);
+}
 
+/* @brief. It implements SA method. At each iteration, it first performs MH
+ * sampling method to acquire a new solution. We use a counter to track if a
+ * better solution is received. If so, we reset the counter to zero, otherwise
+ * we increment it. If the counter equals, say 200, we break the loop. It
+ * indicates that is the past 200 iterations, we have not found a better
+ * solution and it might reach a minima (global or local).
+ * @para[in]: solution. Pointer to the solution array.
+ * @para[in]: size. Size of the solution.
+ * @para[in]: sigma. Standard deviation for normal distribution.
+ * @return: function value of the final solution.
+ **/
+double simulate_annealing(double *solution, int size, double sigma) {
+	int cnt = 0;
+	int n_iter = 100;
+	double temperature = 0.1;
+	double sol_val = test_func(solution, size);
+	while (cnt < 200) {
+		double new_sol_val = metropolis_hastings(solution, size, n_iter, temperature, sigma);
+		if (new_sol_val < sol_val) {
+			cnt = 0;
+		} else {
+			cnt++;
+		}
+		sol_val = new_sol_val;
+		temperature *= 0.999999;
+	}
+	return sol_val;
+}
+
+void print_result(double *solution, int size, double sol_val, bool print_x) {
+	printf("Final result: %.4f\n", sol_val);
+	if (print_x) {
+		printf("Solution is obtained at: \n");
+		printf("(");
+		for (int i = 0; i < size; ++i) {
+			if (i != size-1) {
+				printf("%.3f,", solution[i]);
+			} else {
+				printf("%.3f)\n", solution[i]);
+			}
+		}
+	}
 }
 
 int main(int argc, char **argv) {
 	int p = 1;
-	int n = 1;
+	int size = 1;
 	struct timespec before, after;
 	bool record_time = false;
 	// set rando seed to current time
@@ -98,22 +178,35 @@ int main(int argc, char **argv) {
 			p = atoi(argv[i+1]);
 		}
 		if (strcmp(argv[i], "-n")==0) {
-			n = atoi(argv[i+1]);
+			size = atoi(argv[i+1]);
 		}
 		if (strcmp(argv[i], "-t")==0) {
 			record_time = true;
 		}
 	}
 	// create solution array 
-	double *solution = new double[n];
+	double *solution = new double[size];
 	// create the randomly init interval of the solution
 	// i.e. each element of solution is randomly chosen in [lo,hi]
 	double lo = -100.0;
 	double hi = 100.0;
+	double sigma = 3.0;
+
 
 	// randomly init the solution array
-	init_solution(solution, n, lo, hi);
+	init_solution(solution, size, lo, hi);
 
+  	clock_gettime(CLOCK_REALTIME, &before);
+	double sol_val = simulate_annealing(solution, size, sigma);
+  	clock_gettime(CLOCK_REALTIME, &after);
+
+	if (record_time) {
+  		double delta_ms = (double)(after.tv_sec - before.tv_sec) * 1000.0 + (after.tv_nsec - before.tv_nsec) / 1000000.0;
+		printf("============ Time ============\n");
+		printf("Time: %.3f ms (%.3f s)\n", delta_ms, delta_ms / 1000.0);
+	}
+
+	print_result(solution, size, sol_val, true);
 	// free heap space
 	delete []solution;
 	return 0;
