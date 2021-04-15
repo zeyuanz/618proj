@@ -19,6 +19,7 @@
 #include <math.h>
 #include <string.h>
 #include <time.h>
+#include <random>
 
 /* @brief: print usage of the program
  **/
@@ -74,7 +75,11 @@ void init_solution(double *solution, int size, double lo, double hi) {
 }
 
 void rand_normal(double *new_solution, double *solution, int size, double sigma) {
-
+	std::default_random_engine generator;
+	for (int i = 0; i < size; ++i) {
+		std::normal_distribution<double> distribution(solution[i], sigma);
+		new_solution[i] = distribution(generator);
+	}
 }
 
 /* @brief. It implements MH sampling method. For each input solution and a
@@ -130,10 +135,10 @@ double metropolis_hastings(double *solution, int size, int n_iter, double temper
  **/
 double simulate_annealing(double *solution, int size, double sigma) {
 	int cnt = 0;
-	int n_iter = 100;
-	double temperature = 0.1;
+	int n_iter = 200;
+	double temperature = 0.2;
 	double sol_val = test_func(solution, size);
-	while (cnt < 200) {
+	while (cnt < 1000) {
 		double new_sol_val = metropolis_hastings(solution, size, n_iter, temperature, sigma);
 		if (new_sol_val < sol_val) {
 			cnt = 0;
@@ -147,15 +152,16 @@ double simulate_annealing(double *solution, int size, double sigma) {
 }
 
 void print_result(double *solution, int size, double sol_val, bool print_x) {
+	printf("=========== Result ===========\n");
 	printf("Final result: %.4f\n", sol_val);
 	if (print_x) {
 		printf("Solution is obtained at: \n");
 		printf("(");
 		for (int i = 0; i < size; ++i) {
 			if (i != size-1) {
-				printf("%.3f,", solution[i]);
+				printf("%.2f,", solution[i]);
 			} else {
-				printf("%.3f)\n", solution[i]);
+				printf("%.2f)\n", solution[i]);
 			}
 		}
 	}
@@ -190,12 +196,14 @@ int main(int argc, char **argv) {
 	// i.e. each element of solution is randomly chosen in [lo,hi]
 	double lo = -100.0;
 	double hi = 100.0;
-	double sigma = 3.0;
+	double sigma = 1.0;
 
 
 	// randomly init the solution array
 	init_solution(solution, size, lo, hi);
 
+	printf("init: %.4f\n", test_func(solution, size));
+	printf("at: %.2f\n", solution[0]);
   	clock_gettime(CLOCK_REALTIME, &before);
 	double sol_val = simulate_annealing(solution, size, sigma);
   	clock_gettime(CLOCK_REALTIME, &after);
