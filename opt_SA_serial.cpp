@@ -75,6 +75,9 @@ void init_solution(double *solution, int size, double lo, double hi) {
 	}
 }
 
+/* @brief. Function returns a random variable follows ~ N(0,1)
+ * @return. Randomly sampled value.
+ **/
 double unit_normal() {
 	double r,v1,v2,fac;
 	r = 2;
@@ -87,14 +90,21 @@ double unit_normal() {
 	return v2 * fac;
 }
 
-void rand_normal(double *new_solution, int idx, double lo, double hi, double sigma) {
+/* @brief. Add a random sampled value to a given idx of solution
+ * @para[in]: solution. Pointer to the solution array.
+ * @para[in]: idx. The index of solution that needs to be changed.
+ * @para[in]: lo. lower bound. Perform value clip.
+ * @para[in]: hi. higher bound. Perform value clip.
+ * @para[in]: sigma. Std of normal distribution.
+ **/
+void rand_normal(double *solution, int idx, double lo, double hi, double sigma) {
 	double rand_num = unit_normal() * sigma;
-	new_solution[idx] += rand_num;
-	if (new_solution[idx] > hi) {
-		new_solution[idx] = hi;
+	solution[idx] += rand_num;
+	if (solution[idx] > hi) {
+		solution[idx] = hi;
 	}
-	if (new_solution[idx] < lo) {
-		new_solution[idx] = lo;
+	if (solution[idx] < lo) {
+		solution[idx] = lo;
 	}
 }
 
@@ -110,35 +120,56 @@ void rand_normal(double *new_solution, int idx, double lo, double hi, double sig
  * @return: function value of the final solution.
  **/
 double simulate_annealing(double *solution, int size, double lo, double hi, double sigma) {
-	int cnt = 0;
 	double sol_val = test_func(solution, size);
-	for (int iter = 10000000; iter > 0; iter--) {
-		double temperature = double(iter) / 1000000.0;
+	double temperature = 1.0;
+	int cnt = 0;
+	while (cnt < 3000 && temperature > 1e-12) {
 		// steal idea from gibbs sampling
+		// basically it samples dimension by dimesion
+		// 1|2,3,...,n
+		// 2|1,3,...,n
+		// i|1,2,...i-1,i+1,...,n
 		for (int i = 0; i < size; ++i) {
+			// store original value
 			double original_val = solution[i];
+			// sample by normal distribution
 			rand_normal(solution, i, lo, hi, sigma);
+			// retrieve new function value given new solution
 			double new_sol_val = test_func(solution, size);
 			if (new_sol_val < sol_val) {
-				cnt = 0;
+				// if it is better, keep it and reset counter
 				sol_val = new_sol_val;
+				cnt = 0;
 			} else {
+				// if it is not good
 				double diff = sol_val - new_sol_val;
 				double alpha = rand_double(0.0, 1.0);
+				// accpet with prob
 				double prob = exp(diff / temperature);
 				if (alpha < prob) {
+					// if accept, keep new value and reset counter
 					sol_val = new_sol_val;
+					cnt = 0;
 				} else {
+					// otherwise, restore original solution and increment
+					// counter
 					solution[i] = original_val;
 					cnt++;
 				}
 			}
 		}
+		// perform annealing
 		temperature *= 0.999999;
 	}
 	return sol_val;
 }
 
+/* @brief. Print the result of solution.
+ * @para[in]: solution. Pointer to the solution array.
+ * @para[in]: size. Size of solution.
+ * @para[in]: sol_val. Final optimized value.
+ * @para[in]: print_x. Whether to print all solutions.
+ **/
 void print_result(double *solution, int size, double sol_val, bool print_x) {
 	printf("=========== Result ===========\n");
 	printf("Final result: %.4f\n", sol_val);
@@ -184,10 +215,13 @@ int main(int argc, char **argv) {
 	// i.e. each element of solution is randomly chosen in [lo,hi]
 	double lo = -5.12;
 	double hi = 5.12;
+	// sigma is the std of random normal distribution
 	double sigma = 2.0;
 	// randomly init the solution array
 	init_solution(solution, size, lo, hi);
+	// record time
   	clock_gettime(CLOCK_REALTIME, &before);
+	// perform SA
 	double sol_val = simulate_annealing(solution, size, lo, hi, sigma);
   	clock_gettime(CLOCK_REALTIME, &after);
 
