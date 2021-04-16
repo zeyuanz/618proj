@@ -45,7 +45,8 @@ double test_func(double *input, int size) {
 	double first_term = 10 * static_cast<double>(size);
 	double second_term = 0.0;
 	for (int i = 0; i < size; ++i) {
-		second_term += input[i] * input[i] - 10.0 * cos(2 * M_PI * input[i]);
+		second_term += (input[i] * input[i]);
+		second_term -= 10.0 * cos(2.0 * M_PI * input[i]);
 	}
 	return first_term + second_term;
 }
@@ -74,52 +75,27 @@ void init_solution(double *solution, int size, double lo, double hi) {
 	}
 }
 
-void rand_normal(double *new_solution, double *solution, int size, double sigma) {
-	std::default_random_engine generator;
-	for (int i = 0; i < size; ++i) {
-		std::normal_distribution<double> distribution(solution[i], sigma);
-		new_solution[i] = distribution(generator);
+double unit_normal() {
+	double r,v1,v2,fac;
+	r = 2;
+	while (r >= 1) {
+		v1 = 2 * ((double)rand()/(double)RAND_MAX)-1;
+		v2 = 2 * ((double)rand()/(double)RAND_MAX)-1;
+		r = v1 * v1 + v2 * v2;
 	}
+	fac = sqrt(-2 * log(r) / r);
+	return v2 * fac;
 }
 
-/* @brief. It implements MH sampling method. For each input solution and a
- * a given iteration:
- * 1. It generates guess in normal distirbution. Mean = solution, std = sigma
- * 2. If new solution is better, accept it.
- * 3. If new solution is worse, accept it with exp difference divided by
- * temperature.
- * @para[in]: solution. Pointer to the solution array.
- * @para[in]: size. Size of the solution.
- * @para[in]: temperature. Temperature used for evaluation exp prob.
- * @para[in]: sigma. Standard deviation for normal distribution.
- * @return: function value of the final solution.
- **/
-double metropolis_hastings(double *solution, int size, int n_iter, double temperature, double sigma) {
-	double *new_solution = new double[size];
-	for (int i = 0; i < n_iter; ++i) {
-		// generate new solution in normal distribution
-		// mean = solution (old)
-		// std = sigma
-		rand_normal(new_solution, solution, size, sigma);
-		double new_sol_val = test_func(new_solution, size);
-		double sol_val = test_func(solution, size);
-		if (new_sol_val < sol_val) {
-			memcpy(solution, new_solution, sizeof(double) * size);
-		} else {
-			double diff = sol_val - new_sol_val;
-			double alpha = rand_double(0.0, 1.0);
-			double prob;
-			if (temperature < 1e-12) {
-				prob = 0.0;
-			} else {
-				prob =  exp(diff / temperature);
-			}
-			if (alpha < prob) {
-				memcpy(solution, new_solution, sizeof(double) * size);
-			}
-		}
+void rand_normal(double *new_solution, int idx, double lo, double hi, double sigma) {
+	double rand_num = unit_normal() * sigma;
+	new_solution[idx] += rand_num;
+	if (new_solution[idx] > hi) {
+		new_solution[idx] = hi;
 	}
-	return test_func(solution, size);
+	if (new_solution[idx] < lo) {
+		new_solution[idx] = lo;
+	}
 }
 
 /* @brief. It implements SA method. At each iteration, it first performs MH
@@ -133,19 +109,31 @@ double metropolis_hastings(double *solution, int size, int n_iter, double temper
  * @para[in]: sigma. Standard deviation for normal distribution.
  * @return: function value of the final solution.
  **/
-double simulate_annealing(double *solution, int size, double sigma) {
+double simulate_annealing(double *solution, int size, double lo, double hi, double sigma) {
 	int cnt = 0;
-	int n_iter = 200;
-	double temperature = 0.2;
 	double sol_val = test_func(solution, size);
-	while (cnt < 1000) {
-		double new_sol_val = metropolis_hastings(solution, size, n_iter, temperature, sigma);
-		if (new_sol_val < sol_val) {
-			cnt = 0;
-		} else {
-			cnt++;
+	for (int iter = 10000000; iter > 0; iter--) {
+		double temperature = double(iter) / 1000000.0;
+		// steal idea from gibbs sampling
+		for (int i = 0; i < size; ++i) {
+			double original_val = solution[i];
+			rand_normal(solution, i, lo, hi, sigma);
+			double new_sol_val = test_func(solution, size);
+			if (new_sol_val < sol_val) {
+				cnt = 0;
+				sol_val = new_sol_val;
+			} else {
+				double diff = sol_val - new_sol_val;
+				double alpha = rand_double(0.0, 1.0);
+				double prob = exp(diff / temperature);
+				if (alpha < prob) {
+					sol_val = new_sol_val;
+				} else {
+					solution[i] = original_val;
+					cnt++;
+				}
+			}
 		}
-		sol_val = new_sol_val;
 		temperature *= 0.999999;
 	}
 	return sol_val;
@@ -194,18 +182,13 @@ int main(int argc, char **argv) {
 	double *solution = new double[size];
 	// create the randomly init interval of the solution
 	// i.e. each element of solution is randomly chosen in [lo,hi]
-	double lo = -100.0;
-	double hi = 100.0;
-	double sigma = 1.0;
-
-
+	double lo = -5.12;
+	double hi = 5.12;
+	double sigma = 2.0;
 	// randomly init the solution array
 	init_solution(solution, size, lo, hi);
-
-	printf("init: %.4f\n", test_func(solution, size));
-	printf("at: %.2f\n", solution[0]);
   	clock_gettime(CLOCK_REALTIME, &before);
-	double sol_val = simulate_annealing(solution, size, sigma);
+	double sol_val = simulate_annealing(solution, size, lo, hi, sigma);
   	clock_gettime(CLOCK_REALTIME, &after);
 
 	if (record_time) {
