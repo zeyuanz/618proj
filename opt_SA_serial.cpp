@@ -19,7 +19,7 @@
 #include <math.h>
 #include <string.h>
 #include <time.h>
-#include <random>
+#include <omp.h>
 
 /* @brief: print usage of the program
  **/
@@ -91,21 +91,31 @@ double unit_normal() {
 }
 
 /* @brief. Add a random sampled value to a given idx of solution
- * @para[in]: solution. Pointer to the solution array.
- * @para[in]: idx. The index of solution that needs to be changed.
+ * @para[in]: solution_idx. Pointer to the solution array of specific idx.
  * @para[in]: lo. lower bound. Perform value clip.
  * @para[in]: hi. higher bound. Perform value clip.
  * @para[in]: sigma. Std of normal distribution.
  **/
-void rand_normal(double *solution, int idx, double lo, double hi, double sigma) {
+double rand_normal(double *solution_idx, double lo, double hi, double sigma, double val) {
 	double rand_num = unit_normal() * sigma;
-	solution[idx] += rand_num;
-	if (solution[idx] > hi) {
-		solution[idx] = hi;
+	double sol = *solution_idx;
+
+	val -= (sol * sol);
+	val += 10.0 * cos(2.0 * M_PI * sol);
+
+	sol += rand_num;
+	//clamp the value
+	if (sol < lo) {
+		sol = lo;
+	} else if (sol > hi) {
+		sol = hi;
 	}
-	if (solution[idx] < lo) {
-		solution[idx] = lo;
-	}
+
+	val += (sol * sol);
+	val -= 10.0 * cos(2.0 * M_PI * sol);
+	
+	*solution_idx = sol;
+	return val;
 }
 
 /* @brief. It implements SA method. At each iteration, it first performs MH
@@ -119,47 +129,44 @@ void rand_normal(double *solution, int idx, double lo, double hi, double sigma) 
  * @para[in]: sigma. Standard deviation for normal distribution.
  * @return: function value of the final solution.
  **/
-double simulate_annealing(double *solution, int size, double lo, double hi, double sigma) {
-	double sol_val = test_func(solution, size);
+double simulate_annealing(double *solution, int size, double lo, double hi, double sigma, int p) {
 	double temperature = 1.0;
-	int cnt = 0;
-	while (cnt < 3000 && temperature > 1e-12) {
-		// steal idea from gibbs sampling
-		// basically it samples dimension by dimesion
-		// 1|2,3,...,n
-		// 2|1,3,...,n
-		// i|1,2,...i-1,i+1,...,n
-		for (int i = 0; i < size; ++i) {
-			// store original value
-			double original_val = solution[i];
-			// sample by normal distribution
-			rand_normal(solution, i, lo, hi, sigma);
-			// retrieve new function value given new solution
-			double new_sol_val = test_func(solution, size);
-			if (new_sol_val < sol_val) {
-				// if it is better, keep it and reset counter
-				sol_val = new_sol_val;
-				cnt = 0;
-			} else {
-				// if it is not good
-				double diff = sol_val - new_sol_val;
-				double alpha = rand_double(0.0, 1.0);
-				// accpet with prob
-				double prob = exp(diff / temperature);
-				if (alpha < prob) {
-					// if accept, keep new value and reset counter
-					sol_val = new_sol_val;
-					cnt = 0;
-				} else {
-					// otherwise, restore original solution and increment
-					// counter
-					solution[i] = original_val;
-					cnt++;
+	double sol_val = 0.0;
+	#pragma omp parallel num_threads(p)
+	{	
+		int t = omp_get_thread_num();
+		int tcount = omp_get_num_threads();
+		int delta = (size+tcount-1)/tcount;
+		int start = t * delta;
+		int end = (t+1) * delta;
+		if (end > size) end = size;
+		double *local_solution = new double[end - start];
+		memcpy(local_solution, solution+start, sizeof(double)*(end-start));
+		for (int iter = 1000000; iter > 0; iter--) {
+			temperature = 1.0 * iter / 1000000.0;
+			// steal idea from gibbs sampling
+			// basically it samples dimension by dimesion
+			double sol_val = test_func(solution, size);
+			for (int i = start; i < end; ++i) {
+				// store original value
+				double original_sol = local_solution[i-start];
+				// sample by normal distribution
+				double new_sol_val = rand_normal(local_solution+i-start, lo, hi, sigma, sol_val);
+				if (new_sol_val > sol_val) {
+					// if it is not good
+					double diff = sol_val - new_sol_val;
+					double alpha = rand_double(0.0, 1.0);
+					// accpet with prob
+					double prob = exp(diff / temperature);
+					if (alpha > prob) {
+						//restore original solution and increment counter
+						local_solution[i-start] = original_sol;
+					}
 				}
 			}
+			memcpy(solution+start, local_solution, sizeof(double) * (end-start));
 		}
-		// perform annealing
-		temperature *= 0.999999;
+		delete []local_solution;
 	}
 	return sol_val;
 }
@@ -222,7 +229,7 @@ int main(int argc, char **argv) {
 	// record time
   	clock_gettime(CLOCK_REALTIME, &before);
 	// perform SA
-	double sol_val = simulate_annealing(solution, size, lo, hi, sigma);
+	double sol_val = simulate_annealing(solution, size, lo, hi, sigma, p);
   	clock_gettime(CLOCK_REALTIME, &after);
 
 	if (record_time) {
