@@ -56,8 +56,8 @@ double test_func(double *input, int size) {
  * @para[in]: hi. higher bound of the interval
  * @return: a random double in that interval
  **/
-double rand_double(double lo, double hi) {
-	double rand_val= ((double) rand()) / (double) RAND_MAX;
+double rand_double(double lo, double hi, unsigned int* seed) {
+	double rand_val= ((double) rand_r(seed)) / (double) RAND_MAX;
 	double diff = hi - lo;
 	rand_val *= diff;
 	return lo + rand_val;
@@ -69,21 +69,21 @@ double rand_double(double lo, double hi) {
  * @para[in]: lo. lower bound of the interval
  * @para[in]: hi. higher bound of the interval
  **/
-void init_solution(double *solution, int size, double lo, double hi) {
+void init_solution(double *solution, int size, double lo, double hi, unsigned int* seed) {
 	for (int i = 0; i < size; ++i) {
-		solution[i] = rand_double(lo, hi);
+		solution[i] = rand_double(lo, hi, seed);
 	}
 }
 
 /* @brief. Function returns a random variable follows ~ N(0,1)
  * @return. Randomly sampled value.
  **/
-double unit_normal() {
+double unit_normal(unsigned int* seed) {
 	double r,v1,v2,fac;
 	r = 2;
 	while (r >= 1) {
-		v1 = 2 * ((double)rand()/(double)RAND_MAX)-1;
-		v2 = 2 * ((double)rand()/(double)RAND_MAX)-1;
+		v1 = 2 * ((double)rand_r(seed)/(double)RAND_MAX)-1;
+		v2 = 2 * ((double)rand_r(seed)/(double)RAND_MAX)-1;
 		r = v1 * v1 + v2 * v2;
 	}
 	fac = sqrt(-2 * log(r) / r);
@@ -96,8 +96,8 @@ double unit_normal() {
  * @para[in]: hi. higher bound. Perform value clip.
  * @para[in]: sigma. Std of normal distribution.
  **/
-double rand_normal(double *solution_idx, double lo, double hi, double sigma, double val) {
-	double rand_num = unit_normal() * sigma;
+double rand_normal(double *solution_idx, double lo, double hi, double sigma, double val, unsigned int *seed) {
+	double rand_num = unit_normal(seed) * sigma;
 	double sol = *solution_idx;
 
 	val -= (sol * sol);
@@ -129,8 +129,7 @@ double rand_normal(double *solution_idx, double lo, double hi, double sigma, dou
  * @para[in]: sigma. Standard deviation for normal distribution.
  * @return: function value of the final solution.
  **/
-double simulate_annealing(double *solution, int size, double lo, double hi, double sigma, int p) {
-	double temperature = 1.0;
+double simulate_annealing(double *solution, int size, double lo, double hi, double sigma, int p, unsigned int *rand_seeds) {
 	double sol_val = 0.0;
 	#pragma omp parallel num_threads(p)
 	{	
@@ -143,7 +142,7 @@ double simulate_annealing(double *solution, int size, double lo, double hi, doub
 		double *local_solution = new double[end - start];
 		memcpy(local_solution, solution+start, sizeof(double)*(end-start));
 		for (int iter = 1000000; iter > 0; iter--) {
-			temperature = 1.0 * iter / 1000000.0;
+			double temperature = 1.0 * iter / 1000000.0;
 			// steal idea from gibbs sampling
 			// basically it samples dimension by dimesion
 			double sol_val = test_func(solution, size);
@@ -151,11 +150,11 @@ double simulate_annealing(double *solution, int size, double lo, double hi, doub
 				// store original value
 				double original_sol = local_solution[i-start];
 				// sample by normal distribution
-				double new_sol_val = rand_normal(local_solution+i-start, lo, hi, sigma, sol_val);
+				double new_sol_val = rand_normal(local_solution+i-start, lo, hi, sigma, sol_val, rand_seeds+t);
 				if (new_sol_val > sol_val) {
 					// if it is not good
 					double diff = sol_val - new_sol_val;
-					double alpha = rand_double(0.0, 1.0);
+					double alpha = rand_double(0.0, 1.0, rand_seeds+t);
 					// accpet with prob
 					double prob = exp(diff / temperature);
 					if (alpha > prob) {
@@ -216,6 +215,11 @@ int main(int argc, char **argv) {
 			record_time = true;
 		}
 	}
+	// init different random seeds for different procs
+	unsigned int *rand_seeds = new unsigned int[p];
+	for (int i = 0; i < p; ++i) {
+		rand_seeds[i] = static_cast<unsigned int>(rand());
+	}
 	// create solution array 
 	double *solution = new double[size];
 	// create the randomly init interval of the solution
@@ -225,11 +229,11 @@ int main(int argc, char **argv) {
 	// sigma is the std of random normal distribution
 	double sigma = 2.0;
 	// randomly init the solution array
-	init_solution(solution, size, lo, hi);
+	init_solution(solution, size, lo, hi, rand_seeds);
 	// record time
   	clock_gettime(CLOCK_REALTIME, &before);
 	// perform SA
-	double sol_val = simulate_annealing(solution, size, lo, hi, sigma, p);
+	double sol_val = simulate_annealing(solution, size, lo, hi, sigma, p, rand_seeds);
   	clock_gettime(CLOCK_REALTIME, &after);
 
 	if (record_time) {
