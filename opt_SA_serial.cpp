@@ -19,6 +19,7 @@
 #include <math.h>
 #include <string.h>
 #include <time.h>
+#include <functional>
 #include <omp.h>
 
 /* @brief: print usage of the program
@@ -30,9 +31,12 @@ void print_usage() {
 	printf("	-p	<INT>		--number of processors, should be positive\n");
 	printf("	-n	<INT>		--dimension of test function, should be positive\n");
 	printf("	-t			--output running time\n");
+	printf("	-f	<string>	--functions for testing the performance\n");
+	printf("	Valid options:	ackley\n");
+	printf("			rastrigin\n");
 }
 
-/* @brief: a test function suggested by the paper 
+/* @brief: a test function suggested by the paper called rastrigin
  * Lou, Z., & Reinitz, J. (2016). Parallel simulated annealing using an adaptive
  * resampling interval. Parallel computing, 53, 23-31.
  * It has a global minimum at f(0,0,0,...0) = 0 and the number of 
@@ -41,7 +45,10 @@ void print_usage() {
  * @para[in]: size. Size of the input
  * @return: function value given the input and size of input
  **/
-double test_func(double *input, int size) {
+double rastrigin(double *input, int size) {
+	if (size == 0) {
+		return input[0] * input[0] - 10.0 * cos(2.0 * M_PI * input[0]);
+	}
 	double first_term = 10 * static_cast<double>(size);
 	double second_term = 0.0;
 	for (int i = 0; i < size; ++i) {
@@ -50,7 +57,26 @@ double test_func(double *input, int size) {
 	}
 	return first_term + second_term;
 }
-
+/* @brief: a test function for non-convex opt performance called ackley 
+ * @para[in]: input. Input of x.
+ * @para[in]: size. Size of the input
+ * @return: function value given the input and size of input
+ **/
+double ackley(double *input, int size) {
+	if (size == 0) {
+		return -20.0 * exp(-0.2 * sqrt(0.5 * input[0] * input[0]))
+			-exp(0.5 * cos(2.0 * M_PI * input[0]));
+	}
+	double square_term = 0.0;
+	double cosine_term = 0.0;
+	for (int i = 0; i < size; ++i) {
+		square_term += input[i] * input[i];
+		cosine_term += cos(2.0 * M_PI * input[i]);
+	}
+	double first_term = -20.0 * exp(-0.2 * sqrt(0.5 * square_term));
+	double second_term = -exp(cosine_term / double(size)) + exp(1.0) + 20.0;
+	return first_term + second_term;
+}
 /* @brief: returns a random double in [lo, hi]
  * @para[in]: lo. lower bound of the interval
  * @para[in]: hi. higher bound of the interval
@@ -96,25 +122,20 @@ double unit_normal(unsigned int* seed) {
  * @para[in]: hi. higher bound. Perform value clip.
  * @para[in]: sigma. Std of normal distribution.
  **/
-double rand_normal(double *solution_idx, double lo, double hi, double sigma, double val, unsigned int *seed) {
+double rand_normal(double *solution_idx, double lo, double hi, double sigma,
+	   	double val, unsigned int *seed, std::function<double(double*, int)> test_func) {
 	double rand_num = unit_normal(seed) * sigma;
-	double sol = *solution_idx;
 
-	val -= (sol * sol);
-	val += 10.0 * cos(2.0 * M_PI * sol);
-
-	sol += rand_num;
+	val -= test_func(solution_idx, 0);
+	*solution_idx += rand_num;
 	//clamp the value
-	if (sol < lo) {
-		sol = lo;
-	} else if (sol > hi) {
-		sol = hi;
+	if (*solution_idx < lo) {
+		*solution_idx = lo;
+	} else if (*solution_idx > hi) {
+		*solution_idx = hi;
 	}
 
-	val += (sol * sol);
-	val -= 10.0 * cos(2.0 * M_PI * sol);
-	
-	*solution_idx = sol;
+	val += test_func(solution_idx, 0);
 	return val;
 }
 
@@ -127,21 +148,20 @@ double rand_normal(double *solution_idx, double lo, double hi, double sigma, dou
  * @para[in]: solution. Pointer to the solution array.
  * @para[in]: size. Size of the solution.
  * @para[in]: sigma. Standard deviation for normal distribution.
- * @return: function value of the final solution.
  **/
-double simulate_annealing(double *solution, int size, double lo, double hi, double sigma, int p, unsigned int *rand_seeds) {
-	double sol_val = 0.0;
+void simulate_annealing(double *solution, int size, double lo, double hi, 
+		double sigma, int p, unsigned int *rand_seeds,
+		std::function<double(double*, int)> test_func) {
 	#pragma omp parallel num_threads(p)
 	{	
 		int t = omp_get_thread_num();
 		int tcount = omp_get_num_threads();
-		int delta = (size+tcount-1)/tcount;
-		int start = t * delta;
-		int end = (t+1) * delta;
+		int start = t * size / tcount;
+		int end = (t+1) * size / tcount;
 		if (end > size) end = size;
 		double *local_solution = new double[end - start];
 		memcpy(local_solution, solution+start, sizeof(double)*(end-start));
-		for (int iter = 1000000; iter > 0; iter--) {
+		for (int iter = 100000; iter > 0; iter--) {
 			double temperature = 1.0 * iter / 1000000.0;
 			// steal idea from gibbs sampling
 			// basically it samples dimension by dimesion
@@ -150,7 +170,8 @@ double simulate_annealing(double *solution, int size, double lo, double hi, doub
 				// store original value
 				double original_sol = local_solution[i-start];
 				// sample by normal distribution
-				double new_sol_val = rand_normal(local_solution+i-start, lo, hi, sigma, sol_val, rand_seeds+t);
+				double new_sol_val = rand_normal(local_solution+i-start, lo, 
+				hi, sigma, sol_val, rand_seeds+t, test_func);
 				if (new_sol_val > sol_val) {
 					// if it is not good
 					double diff = sol_val - new_sol_val;
@@ -160,14 +181,26 @@ double simulate_annealing(double *solution, int size, double lo, double hi, doub
 					if (alpha > prob) {
 						//restore original solution and increment counter
 						local_solution[i-start] = original_sol;
+						continue;
 					}
 				}
+				sol_val = new_sol_val;
 			}
 			memcpy(solution+start, local_solution, sizeof(double) * (end-start));
 		}
 		delete []local_solution;
 	}
-	return sol_val;
+}
+
+void print_info(int p, int size, char* func) {
+	printf("============ INFO ============\n");
+	if (func) {
+		printf("Function: %s\n", func);
+	} else {
+		printf("Function: rastrigin\n");
+	}
+	printf("Function dimesnion: %d\n", size);
+	printf("Number of procs: %d\n", p);
 }
 
 /* @brief. Print the result of solution.
@@ -176,17 +209,18 @@ double simulate_annealing(double *solution, int size, double lo, double hi, doub
  * @para[in]: sol_val. Final optimized value.
  * @para[in]: print_x. Whether to print all solutions.
  **/
-void print_result(double *solution, int size, double sol_val, bool print_x) {
+void print_result(double *solution, int size, bool print_x,
+	std::function<double(double*, int)> test_func) {
 	printf("=========== Result ===========\n");
-	printf("Final result: %.4f\n", sol_val);
+	printf("Final result: %.8f\n", test_func(solution, size));
 	if (print_x) {
 		printf("Solution is obtained at: \n");
 		printf("(");
 		for (int i = 0; i < size; ++i) {
 			if (i != size-1) {
-				printf("%.2f,", solution[i]);
+				printf("%.4f,", solution[i]);
 			} else {
-				printf("%.2f)\n", solution[i]);
+				printf("%.4f)\n", solution[i]);
 			}
 		}
 	}
@@ -195,26 +229,36 @@ void print_result(double *solution, int size, double sol_val, bool print_x) {
 int main(int argc, char **argv) {
 	int p = 1;
 	int size = 1;
+	char *func = NULL;
 	struct timespec before, after;
 	bool record_time = false;
+	std::function<double(double*, int)> test_func = rastrigin;
 	// set rando seed to current time
 	srand(time(NULL));
 	// parse the arguments
-	for (int i=0; i < argc; i++) {
-		if (strcmp(argv[i], "-h")==0) {
+	for (int i = 0; i < argc; ++i) {
+		if (!strcmp(argv[i], "-h")) {
 			print_usage();
 			return 0;
 		}
-		if (strcmp(argv[i], "-p")==0) {
-			p = atoi(argv[i+1]);
-		}
-		if (strcmp(argv[i], "-n")==0) {
+		if (!strcmp(argv[i], "-n")) {
 			size = atoi(argv[i+1]);
 		}
-		if (strcmp(argv[i], "-t")==0) {
+		if (!strcmp(argv[i], "-t")) {
 			record_time = true;
 		}
+		if (!strcmp(argv[i], "-p")) {
+			p = atoi(argv[i+1]);
+		}
+		if (!strcmp(argv[i], "-f")) {
+			func = argv[i+1];
+			if (!strcmp("ackley", argv[i+1])) {
+				test_func = ackley;
+			}
+		}
 	}
+	// print configurature of the program
+	print_info(size, p, func);
 	// init different random seeds for different procs
 	unsigned int *rand_seeds = new unsigned int[p];
 	for (int i = 0; i < p; ++i) {
@@ -222,18 +266,22 @@ int main(int argc, char **argv) {
 	}
 	// create solution array 
 	double *solution = new double[size];
+	for (int i = 0; i < size; ++i) {
+		solution[i] = 0.0;
+	}
 	// create the randomly init interval of the solution
 	// i.e. each element of solution is randomly chosen in [lo,hi]
-	double lo = -5.12;
-	double hi = 5.12;
+	double lo = -100.0;
+	double hi = 100.0;
 	// sigma is the std of random normal distribution
 	double sigma = 2.0;
 	// randomly init the solution array
 	init_solution(solution, size, lo, hi, rand_seeds);
+
 	// record time
   	clock_gettime(CLOCK_REALTIME, &before);
 	// perform SA
-	double sol_val = simulate_annealing(solution, size, lo, hi, sigma, p, rand_seeds);
+	simulate_annealing(solution, size, lo, hi, sigma, p, rand_seeds, test_func);
   	clock_gettime(CLOCK_REALTIME, &after);
 
 	if (record_time) {
@@ -242,7 +290,7 @@ int main(int argc, char **argv) {
 		printf("Time: %.3f ms (%.3f s)\n", delta_ms, delta_ms / 1000.0);
 	}
 
-	print_result(solution, size, sol_val, true);
+	print_result(solution, size, true, test_func);
 	// free heap space
 	delete []solution;
 	return 0;
