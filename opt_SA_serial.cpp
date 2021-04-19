@@ -42,7 +42,8 @@ void print_usage() {
  * It has a global minimum at f(0,0,0,...0) = 0 and the number of 
  * local minima grows exponentially with n.
  * @para[in]: input. Input of x.
- * @para[in]: size. Size of the input
+ * @para[in]: size. Size of the input. If size is 0, it only returns the value
+ * that related to the input[0] in the function.
  * @return: function value given the input and size of input
  **/
 double rastrigin(double *input, int size) {
@@ -57,9 +58,11 @@ double rastrigin(double *input, int size) {
 	}
 	return first_term + second_term;
 }
+
 /* @brief: a test function for non-convex opt performance called ackley 
  * @para[in]: input. Input of x.
- * @para[in]: size. Size of the input
+ * @para[in]: size. Size of the input. If size is 0, it only returns the value
+ * that related to the input[0] in the function.
  * @return: function value given the input and size of input
  **/
 double ackley(double *input, int size) {
@@ -77,9 +80,11 @@ double ackley(double *input, int size) {
 	double second_term = -exp(cosine_term / double(size)) + exp(1.0) + 20.0;
 	return first_term + second_term;
 }
+
 /* @brief: returns a random double in [lo, hi]
  * @para[in]: lo. lower bound of the interval
  * @para[in]: hi. higher bound of the interval
+ * @para[in]: seed. random seed to RNG.
  * @return: a random double in that interval
  **/
 double rand_double(double lo, double hi, unsigned int* seed) {
@@ -94,6 +99,7 @@ double rand_double(double lo, double hi, unsigned int* seed) {
  * @para[in]: size. Size of the solution.
  * @para[in]: lo. lower bound of the interval
  * @para[in]: hi. higher bound of the interval
+ * @para[in]: seed. random seed to RNG.
  **/
 void init_solution(double *solution, int size, double lo, double hi, unsigned int* seed) {
 	for (int i = 0; i < size; ++i) {
@@ -102,6 +108,7 @@ void init_solution(double *solution, int size, double lo, double hi, unsigned in
 }
 
 /* @brief. Function returns a random variable follows ~ N(0,1)
+ * @para[in]: seed. random seed to RNG.
  * @return. Randomly sampled value.
  **/
 double unit_normal(unsigned int* seed) {
@@ -121,6 +128,8 @@ double unit_normal(unsigned int* seed) {
  * @para[in]: lo. lower bound. Perform value clip.
  * @para[in]: hi. higher bound. Perform value clip.
  * @para[in]: sigma. Std of normal distribution.
+ * @para[in]: seed. random seed to RNG.
+ * @para[in]: test_func. Pointer to the function for evaluation.
  **/
 double rand_normal(double *solution_idx, double lo, double hi, double sigma,
 	   	double val, unsigned int *seed, std::function<double(double*, int)> test_func) {
@@ -148,6 +157,8 @@ double rand_normal(double *solution_idx, double lo, double hi, double sigma,
  * @para[in]: solution. Pointer to the solution array.
  * @para[in]: size. Size of the solution.
  * @para[in]: sigma. Standard deviation for normal distribution.
+ * @para[in]: rand_seeds. random seeds for different procs.
+ * @para[in]: test_funct. Pointer to the function for evaluation.
  **/
 void simulate_annealing(double *solution, int size, double lo, double hi, 
 		double sigma, int p, unsigned int *rand_seeds,
@@ -192,6 +203,11 @@ void simulate_annealing(double *solution, int size, double lo, double hi,
 	}
 }
 
+/* @brief. Print configuration.
+ * @para[in]: p. Numprocs.
+ * @para[in]: size. Size of solution (function).
+ * @para[in]: func. Function for evaluation.
+ **/
 void print_info(int p, int size, char* func) {
 	printf("============ INFO ============\n");
 	if (func) {
@@ -206,8 +222,8 @@ void print_info(int p, int size, char* func) {
 /* @brief. Print the result of solution.
  * @para[in]: solution. Pointer to the solution array.
  * @para[in]: size. Size of solution.
- * @para[in]: sol_val. Final optimized value.
  * @para[in]: print_x. Whether to print all solutions.
+ * @para[in]: test_func. Pointer to the test function for evaluation
  **/
 void print_result(double *solution, int size, bool print_x,
 	std::function<double(double*, int)> test_func) {
