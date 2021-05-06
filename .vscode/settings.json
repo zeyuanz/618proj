@@ -1,6 +1,12 @@
 {
     "files.associations": {
         "cmath": "c",
-        "random": "c"
+        "random": "c",
+        "limits": "cpp",
+        "initializer_list": "cpp",
+        "type_traits": "cpp",
+        "vector": "cpp",
+        "xstring": "cpp",
+        "xutility": "cpp"
     }
 }
