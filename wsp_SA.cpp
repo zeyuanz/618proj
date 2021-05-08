@@ -335,9 +335,7 @@ int main(int argc, char **argv)
         printf("Time: %.3f ms (%.3f s)\n", delta_ms, delta_ms / 1000.0);
     }
     // print results
-    wsp_print_result(global_cost_path, n_cities);
-    wsp_print_result(global_cost_path_cu, n_cities);
-    
+    print_result(global_cost_path, global_cost_path_cu, (double)(after.tv_sec - before.tv_sec) * 1000.0 + (after.tv_nsec - before.tv_nsec) / 1000000.0, msec, n_cities);
     // free heap alloc memory
     delete[] dist;
     delete[] global_cost_path;

@@ -66,3 +66,4 @@ void read_dist(FILE *fp, double *dist, int n_cities)
     }
   }
 }
+
