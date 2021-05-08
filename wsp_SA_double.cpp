@@ -75,10 +75,8 @@ void init_path(path_t *cost_path, int n_cities, double *dist, unsigned int *seed
 	// compute the cost after permutation
 	for (int i = 0; i < n_cities - 1; ++i)
 	{
-		printf("%d ", cost_path->path[i]);
 		cost_path->cost += get_dist(dist, n_cities, cost_path->path[i], cost_path->path[i + 1]);
 	}
-	printf("initial cosdt is %lf\n", cost_path->cost);
 }
 
 /* @brief: acquire the neigboring distance given position. E.g.
@@ -204,7 +202,6 @@ void simulate_annealing(int n_cities, double *dist, int p)
 			{
 				cost_path->cost = new_cost;
 				cnt = 0;
-				printf("finish\n");
 			}
 			else
 			{
@@ -238,7 +235,6 @@ void simulate_annealing(int n_cities, double *dist, int p)
 			temperature *= 0.999999;
 		}
 		// write the result to globals
-		printf("finish\n");
 		memcpy(globals + i * n_cities, cost_path->path, sizeof(int) * n_cities);
 		global_costs[i * 8] = cost_path->cost;
 		free(cost_path->path);
