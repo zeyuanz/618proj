@@ -4,7 +4,6 @@ CXXFLAGS += -std=c++11 -Wall -Wextra -pthread -fopenmp -g -O3 -DNDEBUG
 .phony: all 
 
 all: 
-	g++ wsp_SA_serial.cpp -o wsp_SA_serial $(CXXFLAGS)
 	mkdir -p objs/
 	nvcc cuda_opt_SA.cu -O3 -m64 --gpu-architecture compute_61 -ccbin /usr/bin/gcc -c -lcurand -lcurand_kernel -o objs/cuda_opt_SA.o
 	g++ -m64 opt_SA.cpp -O3 -Wall -std=c++11 -pthread -fopenmp -g -c -o objs/opt_SA.o

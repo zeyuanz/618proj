@@ -6,11 +6,11 @@
 #include <curand_kernel.h>
 
 #define threadsPerBlock 256
-typedef double(*test_func_t)(double*, int);
+typedef double(*test_func_t)(double*, int, double);
 
-__device__ double rastrigin_cuda(double *input, int size) {
-	if (size == 0) {
-		return input[0] * input[0] - 10.0 * cos(2.0 * M_PI * input[0]);
+__device__ double rastrigin_cuda(double *input, int size, double val) {
+	if (size == 0 && input == NULL) {
+		return val * val - 10.0 * cos(2.0 * M_PI * val);
 	}
 	double first_term = 10 * static_cast<double>(size);
 	double second_term = 0.0;
@@ -20,10 +20,11 @@ __device__ double rastrigin_cuda(double *input, int size) {
 	}
 	return first_term + second_term;
 }
-__device__ double ackley_cuda(double *input, int size) {
-	if (size == 0) {
-		return -20.0 * exp(-0.2 * sqrt(0.5 * input[0] * input[0]))
-			-exp(0.5 * cos(2.0 * M_PI * input[0]));
+
+__device__ double ackley_cuda(double *input, int size, double val) {
+	if (size == 0 && input == NULL) {
+		return -20.0 * exp(-0.2 * sqrt(0.5 * val * val))
+			-exp(0.5 * cos(2.0 * M_PI * val));
 	}
 	double square_term = 0.0;
 	double cosine_term = 0.0;
@@ -36,22 +37,7 @@ __device__ double ackley_cuda(double *input, int size) {
 	return first_term + second_term;
 }
 
-__device__ double rand_normal_cuda(double *solution_idx, double lo, double hi, 
-		double sigma, curandState *state, test_func_t func) {
-	double rand_num = curand_normal_double(state) * sigma;
-	double diff = 0.0;
-	diff -= func(solution_idx, 0);
-	*solution_idx += rand_num;
-	if (*solution_idx < lo) {
-		*solution_idx = lo;
-	} else if (*solution_idx > hi) {
-		*solution_idx = hi;
-	}
-	diff += func(solution_idx, 0);
-	return diff;
-}
-
-__global__ void sa_kernel(double *solution, int size, double lo, double hi, 
+__global__ void sa_kernel(double *dev_solution, int size, double lo, double hi, 
 		double sigma, int choice) {
 	curandState state;
 	test_func_t func;
@@ -63,22 +49,28 @@ __global__ void sa_kernel(double *solution, int size, double lo, double hi,
 			func = ackley_cuda;
 			break;
 	}
-	double temperature = 1.0;
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
-	curand_init(idx, 0, 0, &state);
 	if (idx > size) return;
+	curand_init(idx, 0, 0, &state);
+	double iter = 0.0;
+	double temperature = 1.0;
+	double sol_idx = dev_solution[idx];
 	while(temperature >= 1e-6) {
-		double original_sol = solution[idx];
-		double diff = rand_normal_cuda(solution+idx, lo, hi, sigma, &state, func);
-		if (diff > 0) {
-			double alpha = curand_uniform_double(&state);
-			double prob = exp(-diff / temperature);
-			if (alpha > prob) {
-				solution[idx] = original_sol;
+			double original_sol = sol_idx;
+			double diff = -func(NULL, 0, sol_idx);
+			sol_idx += curand_normal_double(&state) * sigma;
+			diff += func(NULL, 0, sol_idx);
+			if (diff > 0) {
+				double alpha = curand_uniform_double(&state);
+				double prob = exp(-diff / temperature);
+				if (alpha > prob) {
+					sol_idx = original_sol;
+				}
 			}
-		}
-		temperature *= 0.99999;
+		temperature = 1.0 / (1.0+2.5*iter);
+		iter += 1.0;
 	}
+	dev_solution[idx] = sol_idx;
 }
 
 void simulate_annealing_cuda(double *solution, int size, double lo,
@@ -86,12 +78,12 @@ void simulate_annealing_cuda(double *solution, int size, double lo,
 	cudaEvent_t start, stop;
 	cudaEventCreate(&start);
 	cudaEventCreate(&stop);
-    int blocks = size / threadsPerBlock + 1;
+    int numBlock = size / threadsPerBlock + 1;
 	double *dev_solution;
 	cudaMalloc(&dev_solution, sizeof(double)*size);
 	cudaMemcpy(dev_solution, solution, sizeof(double)*size, cudaMemcpyHostToDevice);
 	cudaEventRecord(start);
-    sa_kernel<<<blocks, threadsPerBlock>>>(dev_solution, size, lo, hi, sigma, choice);
+    sa_kernel<<<numBlock, threadsPerBlock>>>(dev_solution, size, lo, hi, sigma, choice);
 	cudaEventRecord(stop);
 	cudaEventSynchronize(stop);
 	cudaEventElapsedTime(msec, start, stop);
@@ -115,7 +107,7 @@ void printCudaInfo()
         printf("Device %d: %s\n", i, deviceProps.name);
         printf("   SMs:        %d\n", deviceProps.multiProcessorCount);
         printf("   Global mem: %.0f MB\n",
-               static_cast<float>(deviceProps.totalGlobalMem) / (1024 * 1024));
+               static_cast<double>(deviceProps.totalGlobalMem) / (1024 * 1024));
         printf("   CUDA Cap:   %d.%d\n", deviceProps.major, deviceProps.minor);
     }
     printf("---------------------------------------------------------\n"); 
