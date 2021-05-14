@@ -63,7 +63,7 @@ void simulate_annealing(double *solution, int size, double lo, double hi, double
 					// basically it samples dimension by dimesion
 					double original_sol = solution[i];
 					double diff = -test_func(solution, size, i);
-					solution[i] += normal_dist(generator); 
+					solution[i] += normal_dist(generator);
 					diff += test_func(solution, size, i);
 					if (diff > 0) {
 						// if it is not good
@@ -88,7 +88,7 @@ void simulate_annealing(double *solution, int size, double lo, double hi, double
 					// basically it samples dimension by dimesion
 					double original_sol = local_solution[i];
 					double diff = -test_func(local_solution, size, i);
-					local_solution[i] += normal_dist(generator); 
+					local_solution[i] += normal_dist(generator);
 					diff += test_func(local_solution, size, i);
 					if (diff > 0) {
 						// if it is not good
