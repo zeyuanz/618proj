@@ -55,10 +55,10 @@ void simulate_annealing(double *solution, int size, double lo, double hi, double
 		int start = t * size / tcount;
 		int end = (t+1) * size / tcount;
 		if (end > size) end = size;
-		double iter = 0.0;
-		double temperature = 1.0;
-		while (temperature >= 1e-6) {
-			for (int i = start; i < end; ++i) {
+		for (int i = start; i < end; ++i) {
+			double iter = 0.0;
+			double temperature = 1.0;
+			while (temperature >= 1e-6) {
 					// steal idea from gibbs sampling
 					// basically it samples dimension by dimesion
 					double original_sol = solution[i];
@@ -75,10 +75,38 @@ void simulate_annealing(double *solution, int size, double lo, double hi, double
 							solution[i] = original_sol;
 						}
 					}
+				temperature = 1.0 / (1.0 + 2.5 * iter);
+				iter += 1.0;
+			}
+		}
+		/*
+		double *local_solution = new double[size];
+		while (temperature >= 1e-6) {
+			memcpy(local_solution, solution, sizeof(double)*size);
+			for (int i = start; i < end; ++i) {
+					// steal idea from gibbs sampling
+					// basically it samples dimension by dimesion
+					double original_sol = local_solution[i];
+					double diff = -test_func(local_solution, size, i);
+					local_solution[i] += normal_dist(generator); 
+					diff += test_func(local_solution, size, i);
+					if (diff > 0) {
+						// if it is not good
+						double alpha = uniform_dist2(generator);
+						// accpet with prob
+						double prob = exp(-diff / temperature);
+						if (alpha > prob) {
+							//restore original solution and increment counter
+							local_solution[i] = original_sol;
+						}
+					}
 				}
 			temperature = 1.0 / (1.0 + 2.5 * iter);
 			iter += 1.0;
+			memcpy(solution+start, local_solution+start, sizeof(double)*(end-start));
 		}
+		delete []local_solution;
+		*/ // this is more robust version dealing with much complex functions
 	}
 }
 
@@ -141,7 +169,7 @@ int main(int argc, char **argv) {
 	}
 	memcpy(solution_cu, solution, sizeof(double) * size);
 	printf("Init sol: %.6f\n", test_func(solution, size, 0.0));
-	double sigma = 1.0;
+	double sigma = 1.5;
 
 	if (dev == NULL || !strcmp(dev, "cpu")) {
 		clock_gettime(CLOCK_REALTIME, &before);
