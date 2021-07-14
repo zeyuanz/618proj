@@ -5,5 +5,5 @@
 ## Wandering Salesman Problem (zeruizhi cheng)
 - folder ```wsp```
 ## DEV MACHINE
-ghc machine. CPU AND GPU.
+CMU ghc machine. CPU AND GPU.
 
