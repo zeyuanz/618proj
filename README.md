@@ -6,4 +6,4 @@
 - folder ```wsp```
 ## DEV MACHINE
 CMU ghc machine. CPU AND GPU.
-
+## ADD sth. 20210717
